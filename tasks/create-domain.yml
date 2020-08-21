@@ -26,9 +26,8 @@
     line:        'export DERBY_FLAG="false"'
 
 - name: backup of setDomainEnv file
-      command:  cp -Pr {{ domain_home }}/bin/setDomainEnv.sh {{ domain_home }}/bin/setDomainEnv.sh_bkp_{{ ansible_date_time.date }}
-      when: backup_config == "True"
-
+  command:  cp -Pr {{ domain_home }}/bin/setDomainEnv.sh {{ domain_home }}/bin/setDomainEnv.sh_bkp_{{ ansible_date_time.date }}
+  
 - name: Removing default SSL profile
   replace:
       path: "{{ domain_home }}/bin/setDomainEnv.sh"
