@@ -25,6 +25,16 @@
     insertafter: '^# Set DERBY_FLAG, if derby is available.'
     line:        'export DERBY_FLAG="false"'
 
+- name: backup of setDomainEnv file
+      command:  cp -Pr {{ domain_home }}/bin/setDomainEnv.sh {{ domain_home }}/bin/setDomainEnv.sh_bkp_{{ ansible_date_time.date }}
+      when: backup_config == "True"
+
+- name: Removing default SSL profile
+  replace:
+      path: "{{ domain_home }}/bin/setDomainEnv.sh"
+      regexp: '(-Djavax\.net\.ssl\.trustStore=\${WL_HOME}\/server\/lib\/DemoTrust\.jks)'
+      replace: ""
+
 - name: template over the start-admin script
   template: 
     src:   start-admin.py.j2
