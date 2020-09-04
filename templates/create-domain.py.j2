@@ -144,6 +144,17 @@ set('TwoWaySSLEnabled',false)
 set('ClientCertificateEnforced',false)
 set('AcceptKssDemoCertsEnabled',false)
 
+cd('/Servers/{{ key }}')
+create('{{ key }}','Log')
+cd('Log/{{ key }}')
+set('LoggingEnabled', 'True')
+set('FileName','logs/{{ key }}.log')
+set('FileMinSize',5000)
+set('RotateLogOnStartup', true)
+set('RotationType','bySize')
+set('NumberOfFilesLimited',true)
+set('FileCount', 50)
+
 {% endfor %}
 
 updateDomain()
@@ -369,6 +380,17 @@ set('ServerPrivateKeyPassPhraseEncrypted','{{ keystore_password }}')
 set('TwoWaySSLEnabled',false)
 set('ClientCertificateEnforced',false)
 set('AcceptKssDemoCertsEnabled',false)
+
+cd('/Servers/oim_server1')
+create('oim_server1','Log')
+cd('Log/oim_server1')
+set('LoggingEnabled', 'True')
+set('FileName','logs/oim_server1.log')
+set('FileMinSize',5000)
+set('RotateLogOnStartup', true)
+set('RotationType','bySize')
+set('NumberOfFilesLimited',true)
+set('FileCount', 50)
 
 ##############################################################
 
