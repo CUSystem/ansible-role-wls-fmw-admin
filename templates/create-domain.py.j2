@@ -94,7 +94,7 @@ set('ListenPort',5556)
 cd('/Servers/AdminServer')
 set('Machine','{{ inventory_hostname }}')
 
-{% for key,value in domain.clusters.iteritems() %}
+{% for key,value in domain.clusters.items() %}
 print('Create cluster {{ key }}')
 cd('/')
 create('{{ key }}','Cluster')
@@ -111,7 +111,7 @@ closeDomain()
 ###############################
 #### create servers
 readDomain('{{ domain_home }}')
-{% for key,value in domain.servers.iteritems() %}
+{% for key,value in domain.servers.items() %}
 print(' >>> Create server {{ key }}')
 cd('/')
 create('{{ key }}','Server')
