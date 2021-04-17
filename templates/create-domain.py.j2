@@ -1,4 +1,3 @@
-#
 # WLST script to create a basic domain and admin server.
 #
 # Templated for Ansible
@@ -147,7 +146,6 @@ set('AcceptKssDemoCertsEnabled',false)
 cd('/Servers/{{ key }}')
 create('{{ key }}','Log')
 cd('Log/{{ key }}')
-set('LoggingEnabled', 'True')
 set('FileName','logs/{{ key }}.log')
 set('FileMinSize',5000)
 set('RotateLogOnStartup', true)
@@ -268,7 +266,7 @@ def loadFMWTemplate(load_template):
     if  "Identity" in load_template:
       print 'Create OIM Credentials'
       oimCredentialStore()
-    #  
+    #
     #
     #Set Applications home directoty
     cd('/')
@@ -285,7 +283,7 @@ def loadFMWTemplate(load_template):
         cmo.setPasswordEncrypted(datasource_password)
 
         cd ('/JDBCSystemResource/' + jdbcsystemresource.getName() + '/JdbcResource/' + jdbcsystemresource.getName() + '/JDBCDriverParams/NO_NAME_0/Properties/NO_NAME_0/Property/user')
-        cmo.setValue(cmo.getValue().replace('DEV',data_source_user_prefix))
+        cmo.setValue(cmo.getValue().replace('TST',data_source_user_prefix))
         cd('/')
     #
     # Section 3: Change Datasources to XA
@@ -346,57 +344,10 @@ readDomain('{{ domain_home }}')
 
 ###############################################################################################
 
-##############################################################
-#### Overwrite Settings for oim_server1
-#readDomain('{{ domain_home }}')
-
-print('Overwrite configuration for oim_server1.')
-cd('/')
-cd('/Servers/oim_server1')
-set('ListenAddress', '{{ domain.servers.oim_server1.listen_address }}')
-set('ListenPort', {{ domain.servers.oim_server1.listen_port }})
-set('WeblogicPluginEnabled', true)
-set('KeyStores','CustomIdentityAndJavaStandardTrust')
-set('CustomIdentityKeyStoreFileName','{{ identity_keystore_file }}')
-set('CustomIdentityKeyStoreType','JKS')
-set('CustomIdentityKeyStorePassPhraseEncrypted','{{ keystore_password }}')
-set('JavaStandardTrustKeyStorePassPhraseEncrypted','changeit')
-set('Machine','{{ domain.servers.oim_server1.machine }}')
-set('Cluster','{{ domain.servers.oim_server1.cluster }}')
-
-create('oim_server1','ServerStart')
-cd('ServerStart/oim_server1')
-set('Arguments', '-Xms3072m -Xmx3072m -Djava.net.preferIPv4Stack=true -Dweblogic.security.SSL.protocolVersion=TLS1')
-set('JavaVendor','Sun')
-set('JavaHome', '{{ java_home }}')
-
-cd('/Servers/oim_server1')
-create('oim_server1','SSL')
-cd('SSL/oim_server1')
-set('Enabled', 'True')
-set('ListenPort', {{ domain.servers.oim_server1.listen_port_ssl }})
-set('ServerPrivateKeyAlias','{{ domain.servers.oim_server1.machine }}')
-set('ServerPrivateKeyPassPhraseEncrypted','{{ keystore_password }}')
-set('TwoWaySSLEnabled',false)
-set('ClientCertificateEnforced',false)
-set('AcceptKssDemoCertsEnabled',false)
-
-cd('/Servers/oim_server1')
-create('oim_server1','Log')
-cd('Log/oim_server1')
-set('LoggingEnabled', 'True')
-set('FileName','logs/oim_server1.log')
-set('FileMinSize',5000)
-set('RotateLogOnStartup', true)
-set('RotationType','bySize')
-set('NumberOfFilesLimited',true)
-set('FileCount', 50)
-
-##############################################################
 
 ###############################
 #### SET Server Groups
-{% for key,value in domain.servers.iteritems() %}
+{% for key,value in domain.servers.items() %}
 
 cd('/')
 cd('/Servers/{{ key }}')
