@@ -37,17 +37,17 @@
 - name: backup of startWeblogic file
   command:  cp -Pr {{ domain_home }}/bin/startWebLogic.sh {{ domain_home }}/bin/startWebLogic.sh_bkp_{{ ansible_date_time.date }}
     
-- name: Update the rotation logic
-  replace:
-      path: "{{ domain_home }}/bin/startWebLogic.sh"
-      regexp: '(?<="\${WLS_REDIRECT_LOG}" )(.*)(?= "")'
-      replace: "!="
+# - name: Update the rotation logic
+#   replace:
+#       path: "{{ domain_home }}/bin/startWebLogic.sh"
+#       regexp: '(?<="\${WLS_REDIRECT_LOG}" )(.*)(?= "")'
+#       replace: "!="
 
-- name: Update the logs to be sent to systemd to journald
-  replace:
-      path: "{{ domain_home }}/bin/startWebLogic.sh"
-      regexp: '(?<=\${SERVER_CLASS} )(.*)(?= 2>&1)'
-      replace: "| systemd-cat"
+# - name: Update the logs to be sent to systemd to journald
+#   replace:
+#       path: "{{ domain_home }}/bin/startWebLogic.sh"
+#       regexp: '(?<=\${SERVER_CLASS} )(.*)(?= 2>&1)'
+#       replace: "| systemd-cat"
       
 - name: template over the start-admin script
   template: 
