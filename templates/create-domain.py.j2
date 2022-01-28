@@ -103,6 +103,7 @@ set('ClusterMessagingMode','unicast')
 set('TxnAffinityEnabled',false)
 set('DefaultLoadAlgorithm','round-robin')
 set('ClusterAddress','{{ value.addresses | join(',') }}')
+set('SecureReplicationEnabled',true)
 
 {% endfor %}
 updateDomain()
