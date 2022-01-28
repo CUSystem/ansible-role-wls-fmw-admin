@@ -25,6 +25,12 @@
     insertafter: '^# Set DERBY_FLAG, if derby is available.'
     line:        'export DERBY_FLAG="false"'
 
+- name: add adr location for 12c
+  lineinfile: 
+    dest:        '{{ domain_home }}/bin/setDomainEnv.sh'
+    insertafter: '^# Set DERBY_FLAG, if derby is available.'
+    line:        'export DERBY_FLAG="false"'
+
 - name: backup of setDomainEnv file
   command:  cp -Pr {{ domain_home }}/bin/setDomainEnv.sh {{ domain_home }}/bin/setDomainEnv.sh_bkp_{{ ansible_date_time.date }}
   

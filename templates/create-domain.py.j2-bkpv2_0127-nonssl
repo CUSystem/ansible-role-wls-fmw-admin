@@ -1,0 +1,421 @@
+# WLST script to create a basic domain and admin server.
+#
+# Templated for Ansible
+#
+# Steve.Taylor@cu.edu Oct-2016
+#
+
+print('Load the basic template')
+selectTemplate('Basic WebLogic Server Domain')
+loadTemplates()
+
+print('Set options')
+setOption('JavaHome', '{{ java_home }}')
+setOption('ServerStartMode','prod')
+setOption('OverwriteDomain', 'true')
+
+print('Create the admin server')
+cd('/Servers/AdminServer')
+cmo.setListenAddress('{{ inventory_hostname }}')
+set('ListenPort', {{ http_port }})
+set('WeblogicPluginEnabled', true)
+cmo.setListenPortEnabled(false)
+cmo.setKeyStores('CustomIdentityAndJavaStandardTrust')
+cmo.setCustomIdentityKeyStoreFileName('{{ identity_keystore_file }}')
+cmo.setCustomIdentityKeyStoreType('JKS')
+cmo.setCustomIdentityKeyStorePassPhraseEncrypted('{{ keystore_password }}')
+cmo.setJavaStandardTrustKeyStorePassPhraseEncrypted('changeit')
+
+print('Set startup args')
+cd('/Servers/AdminServer')
+create('AdminServer','ServerStart')
+cd('ServerStart/AdminServer')
+set('Arguments', '-Xms2048m -Xmx2048m -Dweblogic.security.SSL.protocolVersion=TLS1')
+set('JavaVendor','Sun')
+set('JavaHome', '{{ java_home }}')
+
+print('Create the SSL side')
+cd('/Servers/AdminServer')
+create('AdminServer','SSL')
+cd('SSL/AdminServer')
+set('Enabled', 'True')
+set('ListenPort', {{ https_port }})
+
+print('Set the username/password')
+cd('/Security/base_domain/User/weblogic')
+cmo.setPassword('{{ weblogic_password }}')
+
+print('Write the domain')
+writeDomain('{{ domain_home }}')
+closeTemplate()
+
+# Managed servers configuration and setup
+###############################################################################################
+print('Create Managed Servers ')
+readDomain('{{ domain_home }}')
+print('Set nodemanager info for domain')
+cd('/SecurityConfiguration/{{ domain_name }}')
+cmo.setNodeManagerUsername('{{ weblogic_user }}')
+cmo.setNodeManagerPasswordEncrypted('{{ weblogic_password }}')
+
+print('Set SSL and hostname validation')
+cd('/Servers/AdminServer')
+create('AdminServer','SSL')
+cd('SSL/AdminServer')
+cmo.setServerPrivateKeyAlias('{{ inventory_hostname }}')
+cmo.setServerPrivateKeyPassPhraseEncrypted('{{ keystore_password }}')
+#cmo.setHostnameVerificationIgnored(true)
+#cmo.setHostnameVerifier(None)
+cmo.setTwoWaySSLEnabled(false)
+cmo.setClientCertificateEnforced(false)
+
+print('set authentication flags')
+cd('/SecurityConfiguration/{{ domain_name }}/Realms/myrealm')
+cd('AuthenticationProviders/DefaultAuthenticator')
+set('ControlFlag', 'SUFFICIENT')
+
+#machines are created from inventory
+{% for machine in groups['weblogic'] %}
+print('Create machine {{ machine }}')
+cd('/')
+create('{{ machine }}','UnixMachine')
+cd('Machines/{{ machine }}')
+set('PostBindGIDEnabled',false)
+set('PostBindGIDEnabled',false)
+create('{{ machine }}','NodeManager')
+cd('NodeManager/{{ machine }}')
+set('NMType','SSL')
+set('ListenAddress','{{ machine }}')
+set('ListenPort',5556)
+
+{% endfor %}
+
+#assign AdminServer to a machine... implied that the the machine name is the hostname
+cd('/Servers/AdminServer')
+set('Machine','{{ inventory_hostname }}')
+
+{% for key,value in domain.clusters.items() %}
+print('Create cluster {{ key }}')
+cd('/')
+create('{{ key }}','Cluster')
+cd('/Clusters/{{ key }}')
+set('ClusterMessagingMode','unicast')
+set('TxnAffinityEnabled',false)
+set('DefaultLoadAlgorithm','round-robin')
+set('ClusterAddress','{{ value.addresses | join(',') }}')
+
+{% endfor %}
+updateDomain()
+closeDomain()
+
+###############################
+#### create servers
+readDomain('{{ domain_home }}')
+{% for key,value in domain.servers.items() %}
+print(' >>> Create server {{ key }}')
+cd('/')
+create('{{ key }}','Server')
+cd('/Servers/{{ key }}')
+set('ListenAddress', '{{ value.listen_address }}')
+set('ListenPort', {{ value.listen_port }})
+set('WeblogicPluginEnabled', true)
+set('ListenPortEnabled',false)
+set('KeyStores','CustomIdentityAndJavaStandardTrust')
+set('CustomIdentityKeyStoreFileName','{{ identity_keystore_file }}')
+set('CustomIdentityKeyStoreType','JKS')
+set('CustomIdentityKeyStorePassPhraseEncrypted','{{ keystore_password }}')
+set('JavaStandardTrustKeyStorePassPhraseEncrypted','changeit')
+set('Machine','{{ value.machine }}')
+set('Cluster','{{ value.cluster }}')
+
+create('{{ key }}','ServerStart')
+cd('ServerStart/{{ key }}')
+set('Arguments', '-Xms3072m -Xmx3072m -Djava.net.preferIPv4Stack=true -Dweblogic.security.SSL.protocolVersion=TLS1')
+set('JavaVendor','Sun')
+set('JavaHome', '{{ java_home }}')
+
+cd('/Servers/{{ key }}')
+create('{{ key }}','SSL')
+cd('SSL/{{ key }}')
+set('Enabled', 'True')
+set('ListenPort', {{ value.listen_port_ssl }})
+set('ServerPrivateKeyAlias','{{ value.machine }}')
+set('ServerPrivateKeyPassPhraseEncrypted','{{ keystore_password }}')
+set('TwoWaySSLEnabled',false)
+set('ClientCertificateEnforced',false)
+set('AcceptKssDemoCertsEnabled',false)
+
+cd('/Servers/{{ key }}')
+create('{{ key }}','Log')
+cd('Log/{{ key }}')
+set('FileName','logs/{{ key }}.log')
+set('FileMinSize',5000)
+set('RotateLogOnStartup', true)
+set('RotationType','bySize')
+set('NumberOfFilesLimited',true)
+set('FileCount', 50)
+
+{% endfor %}
+
+updateDomain()
+closeDomain()
+
+####################################
+
+print('Load additional templates ! ')
+#readDomain('{{ domain_home }}')
+
+###############################################################################################
+
+###################################################################
+#####  Extend the Domain for FMW products :: OIM / SOA / OSB ######
+# Updated by Satya Munagala          Date: May 27th 2020
+###################################################################
+
+soaEnabled=False
+osbEnabled=False
+oimEnabled=False
+
+domain_configuration_home = '{{ domain_home }}'
+domain_name = '{{ domain_name }}'
+middleware_home = '{{ mw_home }}'
+
+# Defining Templates for FMW
+jrf_template='Oracle JRF'
+em_template='Oracle Enterprise Manager'
+soa_template='Oracle SOA Suite'
+oim_template='Oracle Identity Manager'
+osb_template='Oracle Service Bus'  ### Verify the template name
+#
+#
+
+#@ Applies only for OIM :
+#Create credential store
+def oimCredentialStore():
+    #
+    cd('/')
+    cd('Credential/TargetStore/oim')
+    cd('TargetKey/keystore')
+    create('c','Credential')
+    cd('Credential')
+    set('Username','keystore')
+    set('Password','{{ vault_keystore_password }}')
+    #
+    cd('/')
+    cd('Credential/TargetStore/oim')
+    cd('TargetKey/OIMSchemaPassword')
+    create('c','Credential')
+    cd('Credential')
+    set('Username','{{ rcu_prefix }}_OIM')
+    set('Password','{{ rcu_schema_password }}')
+    #
+    cd('/')
+    cd('Credential/TargetStore/oim')
+    cd('TargetKey/sysadmin')
+    create('c','Credential')
+    cd('Credential')
+    set('Username','xelsysadm')
+    
+    #
+    cd('/')
+    cd('Credential/TargetStore/oim')
+    cd('TargetKey/WeblogicAdminKey')
+    create('c','Credential')
+    cd('Credential')
+    set('Username','weblogic')
+    set('Password','{{ vault_weblogic_password }}')
+    #
+#End of Cred Store Def
+
+
+# Change DataSource to XA
+def changeDatasourceToXA(datasource):
+  print 'Change datasource '+datasource
+  cd('/')
+  cd('/JDBCSystemResource/'+datasource+'/JdbcResource/'+datasource+'/JDBCDriverParams/NO_NAME_0')
+  set('DriverName','oracle.jdbc.xa.client.OracleXADataSource')
+  print '. Set UseXADataSourceInterface='+'True'
+  set('UseXADataSourceInterface','True')
+  cd('/JDBCSystemResource/'+datasource+'/JdbcResource/'+datasource+'/JDBCDataSourceParams/NO_NAME_0')
+  print '. Set GlobalTransactionsProtocol='+'TwoPhaseCommit'
+  set('GlobalTransactionsProtocol','TwoPhaseCommit')
+  cd('/')
+#
+
+# Load FMW Template as per domain name used
+def loadFMWTemplate(load_template):
+    # ServerGroup definitions
+    adminSvrGrpDesc='WSM-CACHE-SVR WSMPM-MAN-SVR JRF-MAN-SVR'
+    adminSvrGrp=["WSM-CACHE-SVR" , "WSMPM-MAN-SVR" , "JRF-MAN-SVR"]
+    # Define Weblogic Paramaeters
+    db_server_name = '{{ rcu_hostname }}'
+    db_server_port = '{{ rcu_port }}'
+    db_service = '{{ rcu_service }}'
+    data_source_url='jdbc:oracle:thin:@//' + db_server_name + ':' + db_server_port + '/' + db_service
+    data_source_user_prefix= '{{ rcu_prefix }}'
+    datasource_password='{{ rcu_schema_password }}'
+    data_source_test='SQL SELECT 1 FROM DUAL'
+    #
+    # 1 : Start loading the FMW template
+    #
+    print ('\n1. Start loading the FMW template')
+    #
+    readDomain(domain_configuration_home)
+    selectTemplate(load_template)
+    loadTemplates()
+    showTemplates()
+    #
+    if oimEnabled == 'true' and "Identity" in load_template :
+      print 'Create OIM Credentials'
+      oimCredentialStore()
+    #
+    #
+    #Set Applications home directoty
+    cd('/')
+    applications_home = '{{ domain_base }}/user_projects/applications/{{ domain_name }}'
+    setOption( "AppDir", applications_home )
+    #
+    #2 : Load the JDBC Pools and use the RCU prefix
+    print ('\n2. Load the JDBC Pools and use the RCU prefix')
+    jdbcsystemresources = cmo.getJDBCSystemResources()
+    for jdbcsystemresource in jdbcsystemresources:
+        cd ('/JDBCSystemResource/' + jdbcsystemresource.getName() + '/JdbcResource/' + jdbcsystemresource.getName() + '/JDBCConnectionPoolParams/NO_NAME_0')
+        cd ('/JDBCSystemResource/' + jdbcsystemresource.getName() + '/JdbcResource/' + jdbcsystemresource.getName() + '/JDBCDriverParams/NO_NAME_0')
+        cmo.setUrl(data_source_url)
+        cmo.setPasswordEncrypted(datasource_password)
+
+        cd ('/JDBCSystemResource/' + jdbcsystemresource.getName() + '/JdbcResource/' + jdbcsystemresource.getName() + '/JDBCDriverParams/NO_NAME_0/Properties/NO_NAME_0/Property/user')
+        cmo.setValue(cmo.getValue().replace('TST',data_source_user_prefix))
+        cd('/')
+    #
+    # Section 3: Change Datasources to XA
+    print ('\n3. Change datasources to XA')
+    print 'Change datasource LocalScvTblDataSource'
+    cd('/JDBCSystemResource/LocalSvcTblDataSource/JdbcResource/LocalSvcTblDataSource/JDBCDriverParams/NO_NAME_0')
+    set('URL',data_source_url)
+    set('PasswordEncrypted',datasource_password)
+    cd('Properties/NO_NAME_0/Property/user')
+    set('Value',data_source_user_prefix+'_STB')
+    #
+    print ('Call getDatabaseDefaults which reads the service table')
+    getDatabaseDefaults()
+    #
+    if soaEnabled == 'true':
+      changeDatasourceToXA('EDNDataSource')
+      changeDatasourceToXA('OraSDPMDataSource')
+      changeDatasourceToXA('SOADataSource')
+    if osbEnabled == 'true':
+      changeDatasourceToXA('wlsbjmsrpDataSource')
+    if oimEnabled == 'true':
+      changeDatasourceToXA('soaOIMLookupDB')
+      changeDatasourceToXA('oimOperationsDB')
+      oimCredentialStore()
+    #
+    print 'Finshed DataSources'
+    #
+    updateDomain()
+    closeDomain()
+    #
+#END of Def
+
+# Check for the FMW product to load template
+
+if  "soa" in "{{ domain_name }}.lower()":
+    print "Creating SOA Domain!"
+    soaEnabled=True
+    loadFMWTemplate(soa_template)
+elif "osb" in "{{ domain_name }}.lower()":
+    print "Creating OSB Domain!"
+    osbEnabled=True
+    loadFMWTemplate(osb_template)
+elif "oim" in "{{ domain_name }}.lower()":
+    print "Creating OIM Domain!"
+    loadFMWTemplate(jrf_template)
+    loadFMWTemplate(em_template)
+    soaEnabled=True
+    loadFMWTemplate(soa_template)
+    oimEnabled=True
+    loadFMWTemplate(oim_template)
+    #oimCredentialStore()
+else:
+    print "No FMW template required.!"
+
+
+print('Finalize the domain')
+readDomain('{{ domain_home }}')
+
+###############################################################################################
+###############################################################################################
+
+##############################################################
+#### Overwrite Settings for oim_server1
+#readDomain('{{ domain_home }}')
+if "oim" in "{{ domain_name }}.lower()":
+    print('Overwrite configuration for oim_server1.')
+    cd('/')
+    cd('/Servers/oim_server1')
+   
+    set('WeblogicPluginEnabled', true)
+    set('KeyStores','CustomIdentityAndJavaStandardTrust')
+    set('CustomIdentityKeyStoreFileName','{{ identity_keystore_file }}')
+    set('CustomIdentityKeyStoreType','JKS')
+    set('CustomIdentityKeyStorePassPhraseEncrypted','{{ keystore_password }}')
+    set('JavaStandardTrustKeyStorePassPhraseEncrypted','changeit')
+   
+    create('oim_server1','ServerStart')
+    cd('ServerStart/oim_server1')
+    set('Arguments', '-Xms3072m -Xmx3072m -Djava.net.preferIPv4Stack=true -Dweblogic.security.SSL.protocolVersion=TLS1')
+    set('JavaVendor','Sun')
+    set('JavaHome', '{{ java_home }}')
+
+    cd('/Servers/oim_server1')
+    create('oim_server1','SSL')
+    cd('SSL/oim_server1')
+    set('Enabled', 'True')
+    set('ServerPrivateKeyPassPhraseEncrypted','{{ keystore_password }}')
+    set('TwoWaySSLEnabled',false)
+    set('ClientCertificateEnforced',false)
+    set('AcceptKssDemoCertsEnabled',false)
+
+    cd('/Servers/oim_server1')
+    create('oim_server1','Log')
+    cd('Log/oim_server1')
+    set('LoggingEnabled', 'True')
+    set('FileName','logs/oim_server1.log')
+    set('FileMinSize',5000)
+    set('RotateLogOnStartup', true)
+    set('RotationType','bySize')
+    set('NumberOfFilesLimited',true)
+    set('FileCount', 50)
+
+
+else:
+    print "No changes needed.!"
+##############################################################
+###############################
+#### SET Server Groups
+{% for key,value in domain.servers.items() %}
+
+cd('/')
+cd('/Servers/{{ key }}')
+
+if "soa" in "{{ key }}.lower()":
+    print "Assigning SOA server group!"
+    setServerGroups('{{ key }}', ['SOA-MGD-SVRS'])
+elif "osb" in "{{ key }}.lower()":
+    print "Assigning OSB server group!"
+    setServerGroups('{{ key }}', ['OSB-MGD-SVRS-COMBINED'])
+elif "oim" in "{{ key }}.lower()":
+    print "Assigning OIM server group!"
+    setServerGroups('{{ key }}', ['OIM-MGD-SVRS'])
+else:
+    print "No change to server group!"
+
+{% endfor %}
+
+updateDomain()
+closeDomain()
+
+print "DOMAIN CREATION SUCCESSFUL! Exiting Create Domain Script"
+exit()
+
