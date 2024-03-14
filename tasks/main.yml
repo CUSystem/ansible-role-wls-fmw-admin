@@ -9,6 +9,6 @@
     group: "{{ oracle_group }}"
     state: directory
 
-- include: create-domain.yml
+- include_tasks: create-domain.yml
   become_user: oracle
 
